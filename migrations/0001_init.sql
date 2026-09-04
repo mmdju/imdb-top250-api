@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS hits (
+  "key" TEXT PRIMARY KEY,
+  count INTEGER NOT NULL DEFAULT 0
+);
+INSERT OR IGNORE INTO hits("key", count) VALUES ('total', 0);

@@ -1,9 +1,14 @@
-name = "imdb-top250-api"
+name = "tmdb-top250"
 main = "src/index.js"
 compatibility_date = "2025-01-01"
+account_id = "1ba0326e70d80c259d319d959bdac15a"
 
-# Create a KV namespace once, then replace the id below:
-#   wrangler kv namespace create CACHE
 [[kv_namespaces]]
 binding = "CACHE"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "780ae6691a4f43599c23d7bf5178ac3c"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "tmdb-top250-db"
+database_id = "1f31036d-499c-4d38-a7a4-a5ffce157308"
+migrations_dir = "migrations"

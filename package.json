@@ -2,6 +2,7 @@
   "name": "imdb-top250-api",
   "private": true,
   "version": "0.1.0",
+  "license": "MIT",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy"

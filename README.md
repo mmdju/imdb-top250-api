@@ -1,10 +1,9 @@
 # IMDb Top 250 API
 
-Clean JSON API for the IMDb Top 250, scraped live from
-`https://www.imdb.com/chart/top/` and served from Cloudflare Workers
-with edge caching.
-
-> Status: **private / work in progress.** Do not make public yet.
+Clean JSON API for the IMDb Top 250, read live from
+`https://www.imdb.com/chart/top/` through the Jina Reader proxy
+(`r.jina.ai`, because IMDb blocks bots/datacenter IPs with AWS WAF)
+and served from Cloudflare Workers with edge caching.
 
 ## Endpoints
 
@@ -13,7 +12,6 @@ with edge caching.
 | `GET` | `/` | Help page |
 | `GET` | `/top250` | Full Top 250 list (cached, refreshed max once a day) |
 | `GET` | `/top250?limit=10` | First N titles |
-| `GET` | `/refresh?key=ADMIN_KEY` | Force a fresh scrape |
 
 Example item:
 
@@ -41,19 +39,41 @@ npx wrangler dev        # local test at http://localhost:8787/top250
 
 KV works locally with emulation, no setup needed for a first test.
 
-## Deploy (later)
+## Deploy
 
 ```bash
 npx wrangler kv namespace create CACHE
 # put the returned id into wrangler.toml
 
+npx wrangler d1 create imdb-top250-db
+# put the binding/id into wrangler.toml, then:
+npx wrangler d1 migrations apply imdb-top250-db --remote
+
 npx wrangler secret put ADMIN_KEY   # optional, protects /refresh
+npx wrangler secret put JINA_API_KEY  # optional but recommended, makes live fetch reliable
 npx wrangler deploy
 ```
 
+## Admin endpoints
+
+These are not listed on the `/` help page, but they work:
+
+| Method | Path | Description |
+| :--- | :--- | :--- |
+| `GET` | `/refresh?key=ADMIN_KEY` | Force a fresh fetch (needs the key only if `ADMIN_KEY` is set) |
+| `GET` | `/stats` | Total request counts, backed by D1 |
+
 ## Notes
 
-- IMDb sometimes blocks datacenter IPs. If a live scrape fails, the API
-  serves the last good cached copy with `"stale": true`.
-- If the page layout changes and parsing breaks, `scrapeChart()` throws
-  and the error tells you what happened — check `/refresh` output.
+- IMDb blocks bots/datacenter IPs (AWS WAF challenge), so the live chart is
+  read through the Jina Reader proxy. Without a `JINA_API_KEY` it still works
+  but can be rate-limited; with the free key it is far more reliable.
+- If the live fetch fails, the API serves the last good cached copy with
+  `"stale": true`, otherwise the bundled seed `src/fallback.json`
+  (chart snapshot 2026-09-01).
+- Live rank/title/year/rating/votes come from the chart; IMDb ids come from
+  the chart links, with the seed list as backup for anything unmatched.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
