@@ -10,7 +10,16 @@ Clean JSON API for the IMDb Top 250, read live from
 (`r.jina.ai`, because IMDb blocks bots/datacenter IPs with AWS WAF)
 and served from Cloudflare Workers with edge caching.
 
-**Live demo:** https://tmdb-top250.codepions.workers.dev/top250?limit=3
+**No deploy needed — use the hosted API right now:**
+
+Base URL: `https://tmdb-top250.codepions.workers.dev`
+
+- Full list: [*/top250*](https://tmdb-top250.codepions.workers.dev/top250)
+- First 3: [*/top250?limit=3*](https://tmdb-top250.codepions.workers.dev/top250?limit=3)
+- First 10: [*/top250?limit=10*](https://tmdb-top250.codepions.workers.dev/top250?limit=10)
+
+Just open the links — no key, no setup. (Deploy your own copy only if you want
+your own cache, stats and rate limits — see below.)
 
 ## Features
 
