@@ -66,6 +66,25 @@ No posters, plots or images — those belong to their copyright holders.
 python examples/python.py
 ```
 
+## Python version
+
+Prefer self-hosting with Python? `python/` is the same API on FastAPI:
+
+```bash
+cd python
+pip install -r requirements.txt
+uvicorn app:app        # local test at http://localhost:8000/toptv
+```
+
+Same endpoints and response shape. Config via environment:
+
+```bash
+JINA_API_KEY=... ADMIN_KEY=... uvicorn app:app --host 0.0.0.0 --port 8000
+```
+
+Seed data is shared with the Worker (`../src/fallback*.json`);
+request counters live in a local SQLite file (`hits.db`).
+
 ## Test on your PC
 
 ```bash
@@ -117,9 +136,12 @@ MIT — see [LICENSE](LICENSE).
 ## Project structure
 
 ```
-src/index.js        worker: routes, live fetch, parsing, cache, stats
+src/index.js        worker (JS version): routes, live fetch, parsing, cache, stats
 src/fallback.json   seed data, top 250 movies (250 titles, facts only)
 src/fallback-tv.json  seed data, top 250 TV shows (250 titles, facts only)
+python/app.py       same API in Python (FastAPI), self-hostable
+python/requirements.txt  Python dependencies
+examples/python.py  tiny client example (stdlib only)
 migrations/         D1 schema for the request counters
 wrangler.toml       Worker, KV and D1 config
 ```

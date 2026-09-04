@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  validate:
+  validate-worker:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,3 +17,19 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx wrangler deploy --dry-run
+
+  validate-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r python/requirements.txt
+      - run: python -m py_compile python/app.py examples/python.py
+      - run: |
+          cd python
+          (python -m uvicorn app:app --port 8000 &) 
+          sleep 12
+          curl -sf "http://127.0.0.1:8000/toptv?limit=1" | grep -o '"count":250'
+          curl -sf "http://127.0.0.1:8000/top250?limit=1" | grep -o '"count":250'
