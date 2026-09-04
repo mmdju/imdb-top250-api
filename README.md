@@ -1,9 +1,24 @@
 # IMDb Top 250 API
 
+[![CI](https://github.com/Codepions/imdb-top250-api/actions/workflows/ci.yml/badge.svg)](https://github.com/Codepions/imdb-top250-api/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/Codepions/imdb-top250-api/pulls)
+
 Clean JSON API for the IMDb Top 250, read live from
 `https://www.imdb.com/chart/top/` through the Jina Reader proxy
 (`r.jina.ai`, because IMDb blocks bots/datacenter IPs with AWS WAF)
 and served from Cloudflare Workers with edge caching.
+
+**Live demo:** https://tmdb-top250.codepions.workers.dev/top250?limit=3
+
+## Features
+
+- Live Top 250 (rank, title, year, rating, votes, IMDb link)
+- Edge cached (refreshed max once a day), stale-while-revalidate style fallback
+- Bundled seed data so the API answers even when the live fetch is down
+- Request counters backed by D1 (`/stats`)
+- Facts only — no posters, plots or images
 
 ## Endpoints
 
@@ -77,3 +92,12 @@ These are not listed on the `/` help page, but they work:
 ## License
 
 MIT — see [LICENSE](LICENSE).
+
+## Project structure
+
+```
+src/index.js        worker: routes, live fetch, parsing, cache, stats
+src/fallback.json   seed data (250 titles, facts only)
+migrations/         D1 schema for the request counters
+wrangler.toml       Worker, KV and D1 config
+```
