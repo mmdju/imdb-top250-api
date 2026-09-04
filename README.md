@@ -58,6 +58,14 @@ Example item:
 Only factual fields are served (title, year, rating, votes).
 No posters, plots or images — those belong to their copyright holders.
 
+## Examples
+
+- [Python](examples/python.py) — standard library only, no install needed:
+
+```bash
+python examples/python.py
+```
+
 ## Test on your PC
 
 ```bash
