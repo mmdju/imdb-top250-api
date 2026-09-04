@@ -5,8 +5,9 @@
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/Codepions/imdb-top250-api/pulls)
 
-Clean JSON API for the IMDb Top 250, read live from
-`https://www.imdb.com/chart/top/` through the Jina Reader proxy
+Clean JSON API for the IMDb Top 250 movies and Top 250 TV shows, read live from
+`https://www.imdb.com/chart/top/` and `https://www.imdb.com/chart/toptv/`
+through the Jina Reader proxy
 (`r.jina.ai`, because IMDb blocks bots/datacenter IPs with AWS WAF)
 and served from Cloudflare Workers with edge caching.
 
@@ -14,16 +15,17 @@ and served from Cloudflare Workers with edge caching.
 
 Base URL: `https://tmdb-top250.codepions.workers.dev`
 
-- Full list: [*/top250*](https://tmdb-top250.codepions.workers.dev/top250)
-- First 3: [*/top250?limit=3*](https://tmdb-top250.codepions.workers.dev/top250?limit=3)
-- First 10: [*/top250?limit=10*](https://tmdb-top250.codepions.workers.dev/top250?limit=10)
+- Movies, full list: [*/top250*](https://tmdb-top250.codepions.workers.dev/top250)
+- Movies, first 10: [*/top250?limit=10*](https://tmdb-top250.codepions.workers.dev/top250?limit=10)
+- TV shows, full list: [*/toptv*](https://tmdb-top250.codepions.workers.dev/toptv)
+- TV shows, first 10: [*/toptv?limit=10*](https://tmdb-top250.codepions.workers.dev/toptv?limit=10)
 
 Just open the links — no key, no setup. (Deploy your own copy only if you want
 your own cache, stats and rate limits — see below.)
 
 ## Features
 
-- Live Top 250 (rank, title, year, rating, votes, IMDb link)
+- Live Top 250 movies + Top 250 TV shows (rank, title, year, rating, votes, IMDb link)
 - Edge cached (refreshed max once a day), stale-while-revalidate style fallback
 - Bundled seed data so the API answers even when the live fetch is down
 - Request counters backed by D1 (`/stats`)
@@ -34,8 +36,10 @@ your own cache, stats and rate limits — see below.)
 | Method | Path | Description |
 | :--- | :--- | :--- |
 | `GET` | `/` | Help page |
-| `GET` | `/top250` | Full Top 250 list (cached, refreshed max once a day) |
-| `GET` | `/top250?limit=10` | First N titles |
+| `GET` | `/top250` | Full Top 250 movies list (cached, refreshed max once a day) |
+| `GET` | `/top250?limit=10` | First N movies |
+| `GET` | `/toptv` | Full Top 250 TV shows list (cached, refreshed max once a day) |
+| `GET` | `/toptv?limit=10` | First N shows |
 
 Example item:
 
@@ -84,7 +88,7 @@ These are not listed on the `/` help page, but they work:
 
 | Method | Path | Description |
 | :--- | :--- | :--- |
-| `GET` | `/refresh?key=ADMIN_KEY` | Force a fresh fetch (needs the key only if `ADMIN_KEY` is set) |
+| `GET` | `/refresh?key=ADMIN_KEY` | Force a fresh fetch of both charts (needs the key only if `ADMIN_KEY` is set) |
 | `GET` | `/stats` | Total request counts, backed by D1 |
 
 ## Notes
@@ -93,8 +97,8 @@ These are not listed on the `/` help page, but they work:
   read through the Jina Reader proxy. Without a `JINA_API_KEY` it still works
   but can be rate-limited; with the free key it is far more reliable.
 - If the live fetch fails, the API serves the last good cached copy with
-  `"stale": true`, otherwise the bundled seed `src/fallback.json`
-  (chart snapshot 2026-09-01).
+  `"stale": true`, otherwise the bundled seeds (`src/fallback.json` for movies,
+  chart snapshot 2026-09-01; `src/fallback-tv.json` for TV, snapshot 2026-09-04).
 - Live rank/title/year/rating/votes come from the chart; IMDb ids come from
   the chart links, with the seed list as backup for anything unmatched.
 
@@ -106,7 +110,8 @@ MIT — see [LICENSE](LICENSE).
 
 ```
 src/index.js        worker: routes, live fetch, parsing, cache, stats
-src/fallback.json   seed data (250 titles, facts only)
+src/fallback.json   seed data, top 250 movies (250 titles, facts only)
+src/fallback-tv.json  seed data, top 250 TV shows (250 titles, facts only)
 migrations/         D1 schema for the request counters
 wrangler.toml       Worker, KV and D1 config
 ```

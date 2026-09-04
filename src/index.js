@@ -1,25 +1,41 @@
 // IMDb Top 250 as clean JSON, served from Cloudflare Workers.
 //
-// The chart is read through the Jina Reader proxy because IMDb blocks
+// The charts are read through the Jina Reader proxy because IMDb blocks
 // bots and datacenter IPs. Only facts are served (rank, title, year,
 // rating, votes, link) — no posters, plots or images.
 //
 //   GET /               help page
-//   GET /top250         full list, cached up to a day
-//   GET /top250?limit=  first N titles
+//   GET /top250         top 250 movies, cached up to a day
+//   GET /top250?limit=  first N movies
+//   GET /toptv          top 250 TV shows, cached up to a day
+//   GET /toptv?limit=   first N shows
 //   GET /refresh        force a fresh fetch (admin)
 //   GET /stats          request counters (admin)
 
-import FALLBACK_LIST from "./fallback.json";
+import FALLBACK_MOVIES from "./fallback.json";
+import FALLBACK_TV from "./fallback-tv.json";
 
-const JINA_URL = "https://r.jina.ai/https://www.imdb.com/chart/top/";
-const CACHE_KEY = "top250:v1";
+const CHARTS = {
+  top250: {
+    jina: "https://r.jina.ai/https://www.imdb.com/chart/top/",
+    cacheKey: "top250:v1",
+    seed: FALLBACK_MOVIES,
+    // Snapshot of the real chart (2026-09-01); ids may be missing for newer titles.
+    seedUpdatedAt: "2026-09-01T00:00:00.000Z",
+    seedSource: "seed: movies chart snapshot 2026-09-01 (facts only; ids partial)",
+    liveSource: "live: r.jina.ai proxy of imdb.com/chart/top",
+  },
+  toptv: {
+    jina: "https://r.jina.ai/https://www.imdb.com/chart/toptv/",
+    cacheKey: "toptv:v1",
+    seed: FALLBACK_TV,
+    // Snapshot of the real chart (2026-09-04), captured live with ids.
+    seedUpdatedAt: "2026-09-04T00:00:00.000Z",
+    seedSource: "seed: tv chart snapshot 2026-09-04 (facts only)",
+    liveSource: "live: r.jina.ai proxy of imdb.com/chart/toptv",
+  },
+};
 const DAY = 24 * 3600;
-
-// Served when the live fetch fails and there is no cached copy.
-// Snapshot of the real chart (2026-09-01); ids may be missing for newer titles.
-const FALLBACK_UPDATED_AT = "2026-09-01T00:00:00.000Z";
-const FALLBACK_SOURCE = "seed: chart snapshot 2026-09-01 (facts only; ids partial)";
 
 export default {
   async fetch(request, env) {
@@ -36,14 +52,15 @@ export default {
       });
     }
 
-    if (url.pathname === "/top250") {
-      await recordHit(env, "/top250");
+    if (url.pathname === "/top250" || url.pathname === "/toptv") {
+      const name = url.pathname.slice(1);
+      await recordHit(env, url.pathname);
       const limit = Math.min(
         Math.max(parseInt(url.searchParams.get("limit") || "250", 10) || 250, 1),
         250
       );
       try {
-        const result = await getTop250(env, false);
+        const result = await getChart(env, name, false);
         return json({ ...result, data: result.data.slice(0, limit) });
       } catch (err) {
         return json({ error: "Failed to fetch chart", detail: String((err && err.message) || err) }, 503);
@@ -57,20 +74,20 @@ export default {
         if (key !== env.ADMIN_KEY) return json({ error: "Unauthorized" }, 401);
       }
       try {
-        const result = await getTop250(env, true);
-        if (result.fallback) {
-          return json(
-            {
-              error: "Refresh failed",
-              detail: result.liveError || "Live fetch failed",
-              fallback: true,
-              note: result.note,
-              count: result.data.length,
-            },
-            503
-          );
+        const out = {};
+        for (const name of Object.keys(CHARTS)) {
+          const result = await getChart(env, name, true);
+          out[name] = result.fallback
+            ? {
+                error: "Refresh failed",
+                detail: result.liveError || "Live fetch failed",
+                fallback: true,
+                note: result.note,
+                count: result.data.length,
+              }
+            : { refreshed: true, count: result.data.length, updatedAt: result.updatedAt };
         }
-        return json({ refreshed: true, count: result.data.length, updatedAt: result.updatedAt });
+        return json(out);
       } catch (err) {
         return json({ error: "Refresh failed", detail: String((err && err.message) || err) }, 503);
       }
@@ -85,18 +102,19 @@ export default {
 
 // Cached chart when fresh, otherwise fetch live and cache. Falls back to
 // the last good copy, then to the bundled seed.
-async function getTop250(env, force) {
+async function getChart(env, name, force) {
+  const chart = CHARTS[name];
   if (!force && env.CACHE) {
-    const cached = await env.CACHE.get(CACHE_KEY, "json");
+    const cached = await env.CACHE.get(chart.cacheKey, "json");
     if (cached && Date.now() - cached.fetchedAt < DAY * 1000) {
       return { ...cached, stale: false };
     }
   }
 
   try {
-    const data = await fetchLiveChart(env);
+    const data = await fetchLiveChart(env, chart);
     const payload = {
-      source: "live: r.jina.ai proxy of imdb.com/chart/top",
+      source: chart.liveSource,
       updatedAt: new Date().toISOString(),
       fetchedAt: Date.now(),
       count: data.length,
@@ -104,7 +122,7 @@ async function getTop250(env, force) {
       data,
     };
     if (env.CACHE) {
-      await env.CACHE.put(CACHE_KEY, JSON.stringify(payload), {
+      await env.CACHE.put(chart.cacheKey, JSON.stringify(payload), {
         expirationTtl: DAY * 7,
       });
     }
@@ -112,30 +130,30 @@ async function getTop250(env, force) {
   } catch (err) {
     const liveError = String((err && err.message) || err);
     if (env.CACHE) {
-      const cached = await env.CACHE.get(CACHE_KEY, "json");
+      const cached = await env.CACHE.get(chart.cacheKey, "json");
       if (cached) return { ...cached, stale: true };
     }
     return {
-      source: FALLBACK_SOURCE,
-      updatedAt: FALLBACK_UPDATED_AT,
+      source: chart.seedSource,
+      updatedAt: chart.seedUpdatedAt,
       fetchedAt: Date.now(),
-      count: FALLBACK_LIST.length,
+      count: chart.seed.length,
       stale: true,
       fallback: true,
       liveError,
       note: "Live fetch failed. Serving bundled seed data.",
-      data: FALLBACK_LIST,
+      data: chart.seed,
     };
   }
 }
 
 // Live chart via Jina Reader (returns the page as markdown). A JINA_API_KEY
 // secret raises the rate limit a lot. Throws when the result is unusable.
-async function fetchLiveChart(env) {
+async function fetchLiveChart(env, chart) {
   const headers = { "X-With-Images-Summary": "false" };
   const jinaKey = (env.JINA_API_KEY || "").trim();
   if (jinaKey) headers.Authorization = "Bearer " + jinaKey;
-  const res = await fetch(JINA_URL, { headers });
+  const res = await fetch(chart.jina, { headers });
   if (!res.ok) {
     const body = (await res.text().catch(() => "")).slice(0, 200);
     throw new Error("Chart proxy responded with HTTP " + res.status + (body ? " — " + body : ""));
@@ -153,7 +171,7 @@ async function fetchLiveChart(env) {
       "Only parsed " + live.length + " titles from live chart (need 200+, got " + text.length + " chars)"
     );
   }
-  return enrichWithIds(live);
+  return enrichWithIds(live, chart.seed);
 }
 
 // Jina sends one of two layouts. Keyed requests come back rich:
@@ -226,9 +244,9 @@ function parseCompactVotes(num, suffix) {
 }
 
 // Fill gaps (missing ids/ratings/votes) from the bundled seed, matched by title.
-function enrichWithIds(live) {
+function enrichWithIds(live, seed) {
   const byTitle = new Map();
-  for (const s of FALLBACK_LIST) {
+  for (const s of seed) {
     const k = normTitle(s.title);
     if (k && !byTitle.has(k)) byTitle.set(k, s);
   }
@@ -269,7 +287,7 @@ function decodeEntities(s) {
 async function recordHit(env, path) {
   try {
     if (!env.DB) return;
-    const known = path === "/" || path === "/top250" || path === "/refresh" || path === "/stats";
+    const known = path === "/" || path === "/top250" || path === "/toptv" || path === "/refresh" || path === "/stats";
     const batch = [
       env.DB.prepare(
         'INSERT INTO hits("key", count) VALUES (\'total\', 1) ON CONFLICT("key") DO UPDATE SET count = count + 1'
@@ -314,10 +332,12 @@ function helpHtml() {
   return `<!doctype html><html><head><meta charset="utf-8"><title>IMDb Top 250 API</title></head>
 <body style="font-family:sans-serif;max-width:640px;margin:40px auto;line-height:1.7">
 <h1>IMDb Top 250 API</h1>
-<p>Clean JSON served from the edge. Data: <code>imdb.com/chart/top</code> (facts only).</p>
+<p>Clean JSON served from the edge. Movies: <code>imdb.com/chart/top</code>, TV shows: <code>imdb.com/chart/toptv</code> (facts only).</p>
 <ul>
-<li><code>GET /top250</code> — full list</li>
-<li><code>GET /top250?limit=10</code> — first 10</li>
+<li><code>GET /top250</code> — top 250 movies</li>
+<li><code>GET /top250?limit=10</code> — first 10 movies</li>
+<li><code>GET /toptv</code> — top 250 TV shows</li>
+<li><code>GET /toptv?limit=10</code> — first 10 shows</li>
 </ul>
 </body></html>`;
 }
