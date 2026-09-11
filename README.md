@@ -11,7 +11,7 @@ through the Jina Reader proxy
 (`r.jina.ai`, because IMDb blocks bots/datacenter IPs with AWS WAF)
 and served from Cloudflare Workers with edge caching.
 
-**No deploy needed — use the hosted API right now:**
+**No deploy needed - use the hosted API right now:**
 
 Base URL: `https://imdb-top250.mmdju.workers.dev`
 
@@ -20,8 +20,8 @@ Base URL: `https://imdb-top250.mmdju.workers.dev`
 - TV shows, full list: [*/toptv*](https://imdb-top250.mmdju.workers.dev/toptv)
 - TV shows, first 10: [*/toptv?limit=10*](https://imdb-top250.mmdju.workers.dev/toptv?limit=10)
 
-Just open the links — no key, no setup. (Deploy your own copy only if you want
-your own cache, stats and rate limits — see below.)
+Just open the links - no key, no setup. (Deploy your own copy only if you want
+your own cache, stats and rate limits - see below.)
 
 ## Features
 
@@ -31,7 +31,7 @@ your own cache, stats and rate limits — see below.)
 - Search, filter, sort and pagination on both lists
 - Single-title lookup (`/movie/:id`, `/tv/:id`) and `/random`
 - Request counters backed by D1 (`/stats`)
-- Facts only — no posters, plots or images
+- Facts only - no posters, plots or images
 
 ## Endpoints
 
@@ -75,7 +75,7 @@ Example item:
 ```
 
 Only factual fields are served (title, year, rating, votes).
-No posters, plots or images — those belong to their copyright holders.
+No posters, plots or images - those belong to their copyright holders.
 
 List responses wrap the items with paging info:
 
@@ -95,7 +95,7 @@ List responses wrap the items with paging info:
 
 ## Examples
 
-- [Python](examples/python.py) — standard library only, no install needed:
+- [Python](examples/python.py) - standard library only, no install needed:
 
 ```bash
 python examples/python.py
@@ -186,7 +186,7 @@ These are not listed on the `/` help page, but they work:
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT - see [LICENSE](LICENSE).
 
 ## Keywords
 

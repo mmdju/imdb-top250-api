@@ -2,7 +2,7 @@
 //
 // The charts are read through the Jina Reader proxy because IMDb blocks
 // bots and datacenter IPs. Only facts are served (rank, title, year,
-// rating, votes, link) — no posters, plots or images.
+// rating, votes, link) - no posters, plots or images.
 //
 //   GET /               help page
 //   GET /top250         top 250 movies, cached up to a day
@@ -306,7 +306,7 @@ async function fetchLiveChart(env, chart) {
   const res = await fetch(chart.jina, { headers });
   if (!res.ok) {
     const body = (await res.text().catch(() => "")).slice(0, 200);
-    throw new Error("Chart proxy responded with HTTP " + res.status + (body ? " — " + body : ""));
+    throw new Error("Chart proxy responded with HTTP " + res.status + (body ? " - " + body : ""));
   }
   const text = await res.text();
   if (
@@ -484,19 +484,19 @@ function helpHtml() {
 <h1>IMDb Top 250 API</h1>
 <p>Clean JSON served from the edge. Movies: <code>imdb.com/chart/top</code>, TV shows: <code>imdb.com/chart/toptv</code> (facts only).</p>
 <ul>
-<li><code>GET /top250</code> — top 250 movies</li>
-<li><code>GET /toptv</code> — top 250 TV shows</li>
-<li><code>GET /movie/tt0111161</code> — single movie by IMDb id</li>
-<li><code>GET /tv/tt0903747</code> — single TV show by IMDb id</li>
-<li><code>GET /random?type=all</code> — random item (<code>movie|tv|all</code>)</li>
+<li><code>GET /top250</code> - top 250 movies</li>
+<li><code>GET /toptv</code> - top 250 TV shows</li>
+<li><code>GET /movie/tt0111161</code> - single movie by IMDb id</li>
+<li><code>GET /tv/tt0903747</code> - single TV show by IMDb id</li>
+<li><code>GET /random?type=all</code> - random item (<code>movie|tv|all</code>)</li>
 </ul>
 <p><b>List filters</b> (work on /top250 and /toptv):</p>
 <ul>
-<li><code>?search=godfather</code> — title contains (case-insensitive)</li>
-<li><code>?year=1994</code> — exact year</li>
-<li><code>?min_rating=8.5</code> — rating &gt;= value</li>
-<li><code>?sort=rating&amp;order=desc</code> — sort by <code>rank|rating|year|votes|title</code></li>
-<li><code>?limit=10&amp;offset=20</code> — pagination</li>
+<li><code>?search=godfather</code> - title contains (case-insensitive)</li>
+<li><code>?year=1994</code> - exact year</li>
+<li><code>?min_rating=8.5</code> - rating &gt;= value</li>
+<li><code>?sort=rating&amp;order=desc</code> - sort by <code>rank|rating|year|votes|title</code></li>
+<li><code>?limit=10&amp;offset=20</code> - pagination</li>
 </ul>
 <p>Examples:<br>
 <code>/top250?search=godfather</code><br>

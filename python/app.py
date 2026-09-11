@@ -1,4 +1,4 @@
-"""IMDb Top 250 API — Python version (FastAPI).
+"""IMDb Top 250 API - Python version (FastAPI).
 
 Same API as the Cloudflare Worker in ../src, for those who'd rather
 self-host with Python:
@@ -549,12 +549,12 @@ def help_page(request: Request):
 <h1>IMDb Top 250 API</h1>
 <p>Clean JSON served from Python. Movies: <code>imdb.com/chart/top</code>, TV shows: <code>imdb.com/chart/toptv</code> (facts only).</p>
 <ul>
-<li><code>GET /top250</code> — top 250 movies</li>
-<li><code>GET /toptv</code> — top 250 TV shows</li>
-<li><code>GET /movie/tt0111161</code> — single movie</li>
-<li><code>GET /tv/tt0903747</code> — single TV show</li>
-<li><code>GET /random?type=all</code> — random item</li>
+<li><code>GET /top250</code> - top 250 movies</li>
+<li><code>GET /toptv</code> - top 250 TV shows</li>
+<li><code>GET /movie/tt0111161</code> - single movie</li>
+<li><code>GET /tv/tt0903747</code> - single TV show</li>
+<li><code>GET /random?type=all</code> - random item</li>
 </ul>
 <p><b>Filters:</b> <code>?search=godfather&year=1972&min_rating=9&sort=year&order=desc&limit=10&offset=0</code></p>
-<p>Docs: <a href="/docs">/docs</a> — OpenAPI auto-generated.</p>
+<p>Docs: <a href="/docs">/docs</a> - OpenAPI auto-generated.</p>
 </body></html>"""
