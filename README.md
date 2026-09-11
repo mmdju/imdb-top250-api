@@ -188,6 +188,10 @@ These are not listed on the `/` help page, but they work:
 
 MIT — see [LICENSE](LICENSE).
 
+## Keywords
+
+imdb top 250 api, imdb api, free movies api, tv shows api, top rated movies json, movie ratings api, cloudflare workers api, fastapi movies api.
+
 ## Project structure
 
 ```
