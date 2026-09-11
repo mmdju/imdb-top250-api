@@ -4,30 +4,56 @@ Same API as the Cloudflare Worker in ../src, for those who'd rather
 self-host with Python:
 
     pip install -r requirements.txt
-    uvicorn app:app
+    uvicorn app:app --host 0.0.0.0 --port 8000
+    # or: docker build -t imdb-top250-api . && docker run -p 8000:8000 imdb-top250-api
 
-Endpoints: /top250, /toptv, /refresh (admin), /stats, / (help).
+Endpoints: /top250, /toptv (with search/filter/sort/pagination),
+/movie/{imdb_id}, /tv/{imdb_id}, /random, /refresh (admin), /stats, / (help).
+
+Use as a library in your own project:
+
+    from app import query_chart, get_by_id, get_random
+
+    top = query_chart("top250", search="godfather", min_rating=8.5, limit=5)
+    one = get_by_id("top250", "tt0111161")
+    lucky = get_random("all")
+
+Config via environment (.env supported if python-dotenv is installed):
+    JINA_API_KEY=...  # optional but recommended, makes live fetch reliable
+    ADMIN_KEY=...     # optional, protects /refresh
 """
 
 import html
 import json
 import os
+import random
 import re
 import sqlite3
 import time
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal, Optional
 
 from fastapi import FastAPI, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 
 HERE = Path(__file__).parent
 SEED_DIR = HERE.parent / "src"
 DAY = 24 * 3600
 
+try:  # optional: load python/.env for local dev
+    from dotenv import load_dotenv
+
+    load_dotenv(HERE / ".env")
+except ImportError:
+    pass
+
 JINA_API_KEY = os.environ.get("JINA_API_KEY", "").strip()
 ADMIN_KEY = os.environ.get("ADMIN_KEY", "")
+
+VALID_SORTS = ("rank", "rating", "year", "votes", "title")
 
 
 def load_seed(name):
@@ -70,7 +96,7 @@ def db():
 
 def record_hit(path):
     try:
-        known = path in ("/", "/top250", "/toptv", "/refresh", "/stats")
+        known = path in ("/", "/top250", "/toptv", "/movie", "/tv", "/random", "/refresh", "/stats")
         key = path if known else "other"
         con = db()
         con.execute(
@@ -117,6 +143,7 @@ def get_chart(name, force=False):
             "updatedAt": now_iso(),
             "fetched_at": time.time(),
             "count": len(data),
+            "total": len(data),
             "stale": False,
             "data": data,
         }
@@ -130,12 +157,121 @@ def get_chart(name, force=False):
             "updatedAt": chart["seed_updated_at"],
             "fetched_at": time.time(),
             "count": len(chart["seed"]),
+            "total": len(chart["seed"]),
             "stale": True,
             "fallback": True,
             "liveError": str(err),
             "note": "Live fetch failed. Serving bundled seed data.",
             "data": chart["seed"],
         }
+
+
+def default_order(sort: str) -> str:
+    return "asc" if sort in ("rank", "title") else "desc"
+
+
+def query_chart(
+    name: str,
+    search: str = "",
+    year: Optional[int] = None,
+    min_rating: Optional[float] = None,
+    sort: str = "rank",
+    order: Optional[str] = None,
+    offset: int = 0,
+    limit: int = 250,
+    force: bool = False,
+) -> dict:
+    """Library-friendly query: filter + sort + paginate a chart.
+
+    Mirrors the JS `listResponse()` in ../src/index.js so both versions
+    behave identically. `name` is "top250" or "toptv".
+    Returns the public payload dict (same shape as the HTTP response).
+    """
+    if name not in CHARTS:
+        raise ValueError('name must be "top250" or "toptv"')
+    sort = (sort or "rank").lower()
+    if sort not in VALID_SORTS:
+        sort = "rank"
+    order = (order or default_order(sort)).lower()
+    if order not in ("asc", "desc"):
+        order = default_order(sort)
+    limit = min(max(int(limit or 250), 1), 250)
+    offset = max(int(offset or 0), 0)
+    search = (search or "").strip()
+
+    result = get_chart(name, force=force)
+    total = len(result["data"])
+    filtered = result["data"]
+    if search:
+        q = search.lower()
+        filtered = [e for e in filtered if q in (e.get("title") or "").lower()]
+    if year is not None:
+        filtered = [e for e in filtered if e.get("year") == year]
+    if min_rating is not None:
+        filtered = [e for e in filtered if (e.get("rating") if e.get("rating") is not None else -1) >= min_rating]
+    count = len(filtered)
+
+    def sort_key(e):
+        if sort == "title":
+            return (e.get("title") or "").lower()
+        v = e.get(sort)
+        # None values sort last regardless of direction.
+        return (v is None, v)
+
+    reverse = order == "desc"
+    # For None-last with reverse we sort in two steps.
+    if sort == "title":
+        ordered = sorted(filtered, key=sort_key, reverse=reverse)
+    else:
+        not_none = sorted([e for e in filtered if e.get(sort) is not None], key=lambda e: e.get(sort), reverse=reverse)
+        nones = [e for e in filtered if e.get(sort) is None]
+        ordered = not_none + nones
+
+    page = ordered[offset : offset + limit]
+    out = {k: v for k, v in result.items() if k != "fetched_at"}
+    out.update(
+        {
+            "total": total,
+            "count": count,
+            "offset": offset,
+            "limit": limit,
+            "filters": {
+                "search": search or None,
+                "year": year,
+                "min_rating": min_rating,
+                "sort": sort,
+                "order": order,
+            },
+            "data": page,
+        }
+    )
+    return out
+
+
+def get_by_id(name: str, imdb_id: str, force: bool = False) -> Optional[dict]:
+    """Library-friendly single lookup. Returns the item dict or None."""
+    result = get_chart(name, force=force)
+    for e in result["data"]:
+        if e.get("id") == imdb_id:
+            return {"meta": {k: v for k, v in result.items() if k != "data"}, "data": e}
+    return None
+
+
+def get_random(kind: str = "all", force: bool = False) -> dict:
+    """Library-friendly random pick. kind=movie|tv|all. Returns {type, meta, data}."""
+    kind = (kind or "all").lower()
+    if kind not in ("movie", "tv", "all"):
+        raise ValueError("kind must be movie|tv|all")
+    pick = random.choice(["movie", "tv"]) if kind == "all" else kind
+    name = "top250" if pick == "movie" else "toptv"
+    result = get_chart(name, force=force)
+    if not result["data"]:
+        raise RuntimeError("Empty chart")
+    return {
+        "type": pick,
+        "meta": {k: v for k, v in result.items() if k != "data"},
+        "data": random.choice(result["data"]),
+    }
 
 
 def fetch_live_chart(chart):
@@ -258,22 +394,115 @@ def norm_title(s):
     return re.sub(r"[^a-z0-9]+", "", html.unescape(s or "").lower())
 
 
-app = FastAPI(title="IMDb Top 250 API")
+app = FastAPI(
+    title="IMDb Top 250 API",
+    description="Clean JSON API for IMDb Top 250 movies and TV shows (facts only). Same shape as the Cloudflare Worker version.",
+    version="0.2.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "OPTIONS"],
+    allow_headers=["*"],
+)
 
 
 def public_payload(result, limit):
+    # Back-compat helper (old callers). Prefer query_chart() for new code.
     data = {k: v for k, v in result.items() if k != "fetched_at"}
     data["data"] = result["data"][:limit]
     return data
 
 
-@app.get("/top250")
-@app.get("/toptv")
-def chart(request: Request, limit: int = Query(250, ge=1, le=250)):
+ChartSort = Literal["rank", "rating", "year", "votes", "title"]
+ChartOrder = Literal["asc", "desc"]
+
+
+@app.get("/top250", summary="Top 250 movies")
+@app.get("/toptv", summary="Top 250 TV shows")
+def chart(
+    request: Request,
+    limit: int = Query(250, ge=1, le=250, description="How many to return"),
+    offset: int = Query(0, ge=0, description="Skip N after filtering/sorting"),
+    search: str = Query("", description="Case-insensitive substring on title"),
+    year: Optional[int] = Query(None, ge=1800, le=2100, description="Exact year match"),
+    min_rating: Optional[float] = Query(None, ge=0, le=10, description="Keep rating >= this"),
+    sort: ChartSort = Query("rank", description="Sort field"),
+    order: Optional[ChartOrder] = Query(None, description="asc|desc (default smart)"),
+):
     path = request.url.path
     record_hit(path)
     name = path.lstrip("/")
-    return public_payload(get_chart(name), limit)
+    return query_chart(
+        name,
+        search=search,
+        year=year,
+        min_rating=min_rating,
+        sort=sort,
+        order=order,
+        offset=offset,
+        limit=limit,
+    )
+
+
+@app.get("/movie/{imdb_id}", summary="Single movie by IMDb id")
+def movie_by_id(imdb_id: str):
+    record_hit("/movie")
+    if not re.fullmatch(r"tt\d{1,10}", imdb_id):
+        return JSONResponse({"error": "Invalid IMDb id. Use like /movie/tt0111161"}, status_code=400)
+    found = get_by_id("top250", imdb_id)
+    if not found:
+        return JSONResponse({"error": "Not found", "id": imdb_id}, status_code=404)
+    meta, item = found["meta"], found["data"]
+    return {
+        "source": meta.get("source"),
+        "updatedAt": meta.get("updatedAt"),
+        "stale": meta.get("stale", True),
+        **({"fallback": True, "note": meta.get("note")} if meta.get("fallback") else {}),
+        "type": "movie",
+        "data": item,
+    }
+
+
+@app.get("/tv/{imdb_id}", summary="Single TV show by IMDb id")
+def tv_by_id(imdb_id: str):
+    record_hit("/tv")
+    if not re.fullmatch(r"tt\d{1,10}", imdb_id):
+        return JSONResponse({"error": "Invalid IMDb id. Use like /tv/tt0903747"}, status_code=400)
+    found = get_by_id("toptv", imdb_id)
+    if not found:
+        return JSONResponse({"error": "Not found", "id": imdb_id}, status_code=404)
+    meta, item = found["meta"], found["data"]
+    return {
+        "source": meta.get("source"),
+        "updatedAt": meta.get("updatedAt"),
+        "stale": meta.get("stale", True),
+        **({"fallback": True, "note": meta.get("note")} if meta.get("fallback") else {}),
+        "type": "tv",
+        "data": item,
+    }
+
+
+@app.get("/random", summary="Random title")
+def random_title(type: str = Query("all", description="movie|tv|all")):
+    record_hit("/random")
+    kind = (type or "all").lower()
+    if kind not in ("movie", "tv", "all"):
+        return JSONResponse({"error": "Invalid type. Use ?type=movie|tv|all"}, status_code=400)
+    try:
+        picked = get_random(kind)
+    except RuntimeError as err:
+        return JSONResponse({"error": str(err)}, status_code=503)
+    meta = picked["meta"]
+    return {
+        "source": meta.get("source"),
+        "updatedAt": meta.get("updatedAt"),
+        "stale": meta.get("stale", True),
+        **({"fallback": True, "note": meta.get("note")} if meta.get("fallback") else {}),
+        "type": picked["type"],
+        "data": picked["data"],
+    }
 
 
 @app.get("/refresh")
@@ -316,13 +545,16 @@ def stats():
 def help_page(request: Request):
     record_hit("/")
     return """<!doctype html><html><head><meta charset="utf-8"><title>IMDb Top 250 API</title></head>
-<body style="font-family:sans-serif;max-width:640px;margin:40px auto;line-height:1.7">
+<body style="font-family:sans-serif;max-width:680px;margin:40px auto;line-height:1.7">
 <h1>IMDb Top 250 API</h1>
-<p>Clean JSON served from the edge. Movies: <code>imdb.com/chart/top</code>, TV shows: <code>imdb.com/chart/toptv</code> (facts only).</p>
+<p>Clean JSON served from Python. Movies: <code>imdb.com/chart/top</code>, TV shows: <code>imdb.com/chart/toptv</code> (facts only).</p>
 <ul>
 <li><code>GET /top250</code> — top 250 movies</li>
-<li><code>GET /top250?limit=10</code> — first 10 movies</li>
 <li><code>GET /toptv</code> — top 250 TV shows</li>
-<li><code>GET /toptv?limit=10</code> — first 10 shows</li>
+<li><code>GET /movie/tt0111161</code> — single movie</li>
+<li><code>GET /tv/tt0903747</code> — single TV show</li>
+<li><code>GET /random?type=all</code> — random item</li>
 </ul>
+<p><b>Filters:</b> <code>?search=godfather&year=1972&min_rating=9&sort=year&order=desc&limit=10&offset=0</code></p>
+<p>Docs: <a href="/docs">/docs</a> — OpenAPI auto-generated.</p>
 </body></html>"""

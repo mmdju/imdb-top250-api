@@ -5,13 +5,13 @@
   "license": "MIT",
   "description": "Clean JSON API for the IMDb Top 250 movies and TV shows on Cloudflare Workers.",
   "keywords": ["imdb", "top250", "cloudflare-workers", "api"],
-  "homepage": "https://github.com/Codepions/imdb-top250-api#readme",
+  "homepage": "https://github.com/mmdju/imdb-top250-api#readme",
   "bugs": {
-    "url": "https://github.com/Codepions/imdb-top250-api/issues"
+    "url": "https://github.com/mmdju/imdb-top250-api/issues"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Codepions/imdb-top250-api.git"
+    "url": "https://github.com/mmdju/imdb-top250-api.git"
   },
   "scripts": {
     "dev": "wrangler dev",

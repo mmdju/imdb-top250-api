@@ -1,14 +1,15 @@
-name = "tmdb-top250"
+name = "imdb-top250"
 main = "src/index.js"
 compatibility_date = "2025-01-01"
-account_id = "1ba0326e70d80c259d319d959bdac15a"
+# Cloudflare account: Mmdju (workers.dev subdomain: mmdju)
+account_id = "525eb5c067d16e8bcb2eab23b20ee7a1"
 
 [[kv_namespaces]]
 binding = "CACHE"
-id = "780ae6691a4f43599c23d7bf5178ac3c"
+id = "50faea9871874ed98ef7cb2f06926c63"
 
 [[d1_databases]]
 binding = "DB"
-database_name = "tmdb-top250-db"
-database_id = "1f31036d-499c-4d38-a7a4-a5ffce157308"
+database_name = "imdb-top250-db"
+database_id = "70f3a656-da77-43a0-bc99-12d7a042f78f"
 migrations_dir = "migrations"

@@ -6,9 +6,18 @@
 //
 //   GET /               help page
 //   GET /top250         top 250 movies, cached up to a day
-//   GET /top250?limit=  first N movies
 //   GET /toptv          top 250 TV shows, cached up to a day
-//   GET /toptv?limit=   first N shows
+//   List query params (both charts):
+//     limit=250       1..250, how many to return
+//     offset=0        skip N after filtering/sorting
+//     search=         case-insensitive substring on title
+//     year=1994       exact year match
+//     min_rating=8.5  keep rating >= this
+//     sort=rank       rank|rating|year|votes|title
+//     order=asc       asc|desc (default: rank/title asc, rating/votes/year desc)
+//   GET /movie/tt0111161   single movie by IMDb id
+//   GET /tv/tt0903747      single TV show by IMDb id
+//   GET /random?type=all   random item, type=movie|tv|all (default all)
 //   GET /refresh        force a fresh fetch (admin)
 //   GET /stats          request counters (admin)
 
@@ -36,10 +45,24 @@ const CHARTS = {
   },
 };
 const DAY = 24 * 3600;
+const VALID_SORTS = ["rank", "rating", "year", "votes", "title"];
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+
+    // CORS preflight for browser apps.
+    if (request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "access-control-allow-origin": "*",
+          "access-control-allow-methods": "GET, OPTIONS",
+          "access-control-allow-headers": "*",
+          "access-control-max-age": "86400",
+        },
+      });
+    }
 
     if (url.pathname === "/stats") {
       await recordHit(env, "/stats");
@@ -55,13 +78,62 @@ export default {
     if (url.pathname === "/top250" || url.pathname === "/toptv") {
       const name = url.pathname.slice(1);
       await recordHit(env, url.pathname);
-      const limit = Math.min(
-        Math.max(parseInt(url.searchParams.get("limit") || "250", 10) || 250, 1),
-        250
-      );
       try {
+        const params = parseListParams(url.searchParams);
         const result = await getChart(env, name, false);
-        return json({ ...result, data: result.data.slice(0, limit) });
+        return json(listResponse(result, params));
+      } catch (err) {
+        return json({ error: "Failed to fetch chart", detail: String((err && err.message) || err) }, 503);
+      }
+    }
+
+    if (url.pathname.startsWith("/movie/") || url.pathname.startsWith("/tv/")) {
+      const isMovie = url.pathname.startsWith("/movie/");
+      const chartName = isMovie ? "top250" : "toptv";
+      const type = isMovie ? "movie" : "tv";
+      await recordHit(env, isMovie ? "/movie" : "/tv");
+      const id = url.pathname.split("/")[2] || "";
+      if (!/^tt\d{1,10}$/.test(id)) {
+        return json({ error: "Invalid IMDb id. Use like /movie/tt0111161" }, 400);
+      }
+      try {
+        const result = await getChart(env, chartName, false);
+        const item = result.data.find((e) => e.id === id) || null;
+        if (!item) return json({ error: "Not found", id }, 404);
+        return json({
+          source: result.source,
+          updatedAt: result.updatedAt,
+          stale: result.stale,
+          ...(result.fallback ? { fallback: true, note: result.note } : {}),
+          type,
+          data: item,
+        });
+      } catch (err) {
+        return json({ error: "Failed to fetch chart", detail: String((err && err.message) || err) }, 503);
+      }
+    }
+
+    if (url.pathname === "/random") {
+      await recordHit(env, "/random");
+      const typeParam = (url.searchParams.get("type") || "all").toLowerCase();
+      if (!["movie", "tv", "all"].includes(typeParam)) {
+        return json({ error: "Invalid type. Use ?type=movie|tv|all" }, 400);
+      }
+      try {
+        // Pick the chart first (so "all" is 50/50), then a random item.
+        const pickType = typeParam === "all" ? (Math.random() < 0.5 ? "movie" : "tv") : typeParam;
+        const chartName = pickType === "movie" ? "top250" : "toptv";
+        const result = await getChart(env, chartName, false);
+        if (!result.data.length) return json({ error: "Empty chart" }, 503);
+        const item = result.data[Math.floor(Math.random() * result.data.length)];
+        return json({
+          source: result.source,
+          updatedAt: result.updatedAt,
+          stale: result.stale,
+          ...(result.fallback ? { fallback: true, note: result.note } : {}),
+          type: pickType,
+          data: item,
+        });
       } catch (err) {
         return json({ error: "Failed to fetch chart", detail: String((err && err.message) || err) }, 503);
       }
@@ -95,10 +167,86 @@ export default {
 
     await recordHit(env, url.pathname === "/" ? "/" : "other");
     return new Response(helpHtml(), {
-      headers: { "content-type": "text/html; charset=utf-8" },
+      headers: {
+        "content-type": "text/html; charset=utf-8",
+        "access-control-allow-origin": "*",
+      },
     });
   },
 };
+
+// ---- list querying (shared logic with python/app.py) ----
+
+function parseListParams(sp) {
+  const limit = Math.min(Math.max(parseInt(sp.get("limit") || "250", 10) || 250, 1), 250);
+  const offset = Math.max(parseInt(sp.get("offset") || "0", 10) || 0, 0);
+  const search = (sp.get("search") || "").trim();
+  const yearRaw = (sp.get("year") || "").trim();
+  const year = /^\d{4}$/.test(yearRaw) ? parseInt(yearRaw, 10) : null;
+  const minRatingRaw = (sp.get("min_rating") || "").trim();
+  const minRating = minRatingRaw === "" ? null : parseFloat(minRatingRaw);
+  const sortRaw = (sp.get("sort") || "rank").trim().toLowerCase();
+  const sort = VALID_SORTS.includes(sortRaw) ? sortRaw : "rank";
+  const orderRaw = (sp.get("order") || "").trim().toLowerCase();
+  // Sensible defaults: rank/title ascending, everything else descending.
+  const defaultOrder = sort === "rank" || sort === "title" ? "asc" : "desc";
+  const order = orderRaw === "asc" || orderRaw === "desc" ? orderRaw : defaultOrder;
+  return {
+    limit,
+    offset,
+    search,
+    year,
+    min_rating: Number.isFinite(minRating) ? minRating : null,
+    sort,
+    order,
+  };
+}
+
+function listResponse(chartResult, params) {
+  const total = chartResult.data.length;
+  let filtered = chartResult.data;
+  if (params.search) {
+    const q = params.search.toLowerCase();
+    filtered = filtered.filter((e) => (e.title || "").toLowerCase().includes(q));
+  }
+  if (params.year != null) {
+    filtered = filtered.filter((e) => e.year === params.year);
+  }
+  if (params.min_rating != null) {
+    filtered = filtered.filter((e) => (e.rating ?? -Infinity) >= params.min_rating);
+  }
+  const count = filtered.length;
+  const sorted = [...filtered].sort((a, b) => {
+    let cmp = 0;
+    if (params.sort === "title") {
+      cmp = String(a.title || "").localeCompare(String(b.title || ""));
+    } else {
+      const av = a[params.sort] ?? null;
+      const bv = b[params.sort] ?? null;
+      if (av == null && bv == null) cmp = 0;
+      else if (av == null) cmp = 1; // nulls last
+      else if (bv == null) cmp = -1;
+      else cmp = av - bv;
+    }
+    return params.order === "desc" ? -cmp : cmp;
+  });
+  const data = sorted.slice(params.offset, params.offset + params.limit);
+  return {
+    ...chartResult,
+    total,
+    count,
+    offset: params.offset,
+    limit: params.limit,
+    filters: {
+      search: params.search || null,
+      year: params.year,
+      min_rating: params.min_rating,
+      sort: params.sort,
+      order: params.order,
+    },
+    data,
+  };
+}
 
 // Cached chart when fresh, otherwise fetch live and cache. Falls back to
 // the last good copy, then to the bundled seed.
@@ -118,6 +266,7 @@ async function getChart(env, name, force) {
       updatedAt: new Date().toISOString(),
       fetchedAt: Date.now(),
       count: data.length,
+      total: data.length,
       stale: false,
       data,
     };
@@ -138,6 +287,7 @@ async function getChart(env, name, force) {
       updatedAt: chart.seedUpdatedAt,
       fetchedAt: Date.now(),
       count: chart.seed.length,
+      total: chart.seed.length,
       stale: true,
       fallback: true,
       liveError,
@@ -287,7 +437,7 @@ function decodeEntities(s) {
 async function recordHit(env, path) {
   try {
     if (!env.DB) return;
-    const known = path === "/" || path === "/top250" || path === "/toptv" || path === "/refresh" || path === "/stats";
+    const known = ["/", "/top250", "/toptv", "/movie", "/tv", "/random", "/refresh", "/stats"].includes(path);
     const batch = [
       env.DB.prepare(
         'INSERT INTO hits("key", count) VALUES (\'total\', 1) ON CONFLICT("key") DO UPDATE SET count = count + 1'
@@ -330,14 +480,27 @@ function json(obj, status = 200) {
 
 function helpHtml() {
   return `<!doctype html><html><head><meta charset="utf-8"><title>IMDb Top 250 API</title></head>
-<body style="font-family:sans-serif;max-width:640px;margin:40px auto;line-height:1.7">
+<body style="font-family:sans-serif;max-width:680px;margin:40px auto;line-height:1.7">
 <h1>IMDb Top 250 API</h1>
 <p>Clean JSON served from the edge. Movies: <code>imdb.com/chart/top</code>, TV shows: <code>imdb.com/chart/toptv</code> (facts only).</p>
 <ul>
 <li><code>GET /top250</code> — top 250 movies</li>
-<li><code>GET /top250?limit=10</code> — first 10 movies</li>
 <li><code>GET /toptv</code> — top 250 TV shows</li>
-<li><code>GET /toptv?limit=10</code> — first 10 shows</li>
+<li><code>GET /movie/tt0111161</code> — single movie by IMDb id</li>
+<li><code>GET /tv/tt0903747</code> — single TV show by IMDb id</li>
+<li><code>GET /random?type=all</code> — random item (<code>movie|tv|all</code>)</li>
 </ul>
+<p><b>List filters</b> (work on /top250 and /toptv):</p>
+<ul>
+<li><code>?search=godfather</code> — title contains (case-insensitive)</li>
+<li><code>?year=1994</code> — exact year</li>
+<li><code>?min_rating=8.5</code> — rating &gt;= value</li>
+<li><code>?sort=rating&amp;order=desc</code> — sort by <code>rank|rating|year|votes|title</code></li>
+<li><code>?limit=10&amp;offset=20</code> — pagination</li>
+</ul>
+<p>Examples:<br>
+<code>/top250?search=godfather</code><br>
+<code>/top250?min_rating=9&amp;sort=year&amp;order=desc</code><br>
+<code>/toptv?year=2008&amp;limit=5</code></p>
 </body></html>`;
 }

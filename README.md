@@ -1,9 +1,9 @@
 # IMDb Top 250 API
 
-[![CI](https://github.com/Codepions/imdb-top250-api/actions/workflows/ci.yml/badge.svg)](https://github.com/Codepions/imdb-top250-api/actions/workflows/ci.yml)
+[![CI](https://github.com/mmdju/imdb-top250-api/actions/workflows/ci.yml/badge.svg)](https://github.com/mmdju/imdb-top250-api/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/Codepions/imdb-top250-api/pulls)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/mmdju/imdb-top250-api/pulls)
 
 Clean JSON API for the IMDb Top 250 movies and Top 250 TV shows, read live from
 `https://www.imdb.com/chart/top/` and `https://www.imdb.com/chart/toptv/`
@@ -13,12 +13,12 @@ and served from Cloudflare Workers with edge caching.
 
 **No deploy needed — use the hosted API right now:**
 
-Base URL: `https://tmdb-top250.codepions.workers.dev`
+Base URL: `https://imdb-top250.mmdju.workers.dev`
 
-- Movies, full list: [*/top250*](https://tmdb-top250.codepions.workers.dev/top250)
-- Movies, first 10: [*/top250?limit=10*](https://tmdb-top250.codepions.workers.dev/top250?limit=10)
-- TV shows, full list: [*/toptv*](https://tmdb-top250.codepions.workers.dev/toptv)
-- TV shows, first 10: [*/toptv?limit=10*](https://tmdb-top250.codepions.workers.dev/toptv?limit=10)
+- Movies, full list: [*/top250*](https://imdb-top250.mmdju.workers.dev/top250)
+- Movies, first 10: [*/top250?limit=10*](https://imdb-top250.mmdju.workers.dev/top250?limit=10)
+- TV shows, full list: [*/toptv*](https://imdb-top250.mmdju.workers.dev/toptv)
+- TV shows, first 10: [*/toptv?limit=10*](https://imdb-top250.mmdju.workers.dev/toptv?limit=10)
 
 Just open the links — no key, no setup. (Deploy your own copy only if you want
 your own cache, stats and rate limits — see below.)
@@ -28,6 +28,8 @@ your own cache, stats and rate limits — see below.)
 - Live Top 250 movies + Top 250 TV shows (rank, title, year, rating, votes, IMDb link)
 - Edge cached (refreshed max once a day), stale-while-revalidate style fallback
 - Bundled seed data so the API answers even when the live fetch is down
+- Search, filter, sort and pagination on both lists
+- Single-title lookup (`/movie/:id`, `/tv/:id`) and `/random`
 - Request counters backed by D1 (`/stats`)
 - Facts only — no posters, plots or images
 
@@ -40,6 +42,23 @@ your own cache, stats and rate limits — see below.)
 | `GET` | `/top250?limit=10` | First N movies |
 | `GET` | `/toptv` | Full Top 250 TV shows list (cached, refreshed max once a day) |
 | `GET` | `/toptv?limit=10` | First N shows |
+| `GET` | `/movie/tt0111161` | Single movie by IMDb id (`404` if missing) |
+| `GET` | `/tv/tt0903747` | Single TV show by IMDb id (`404` if missing) |
+| `GET` | `/random?type=all` | Random item, `type=movie\|tv\|all` (default `all`) |
+
+List filters (work on `/top250` and `/toptv`, can be combined):
+
+| Param | Example | Description |
+| :--- | :--- | :--- |
+| `search` | `?search=godfather` | Title contains, case-insensitive |
+| `year` | `?year=1994` | Exact year match |
+| `min_rating` | `?min_rating=8.5` | Keep `rating >= value` |
+| `sort` | `?sort=rating` | `rank\|rating\|year\|votes\|title` (default `rank`) |
+| `order` | `?order=desc` | `asc\|desc` (default: `rank`/`title` asc, rest desc) |
+| `limit` | `?limit=10` | `1..250`, default `250` |
+| `offset` | `?offset=20` | Skip N after filtering/sorting, default `0` |
+
+Combined example: `/top250?search=the&min_rating=9&sort=year&order=desc&limit=5&offset=0`
 
 Example item:
 
@@ -50,7 +69,7 @@ Example item:
   "title": "The Shawshank Redemption",
   "year": 1994,
   "rating": 9.3,
-  "votes": 2800000,
+  "votes": 2665388,
   "url": "https://www.imdb.com/title/tt0111161/"
 }
 ```
@@ -58,12 +77,32 @@ Example item:
 Only factual fields are served (title, year, rating, votes).
 No posters, plots or images — those belong to their copyright holders.
 
+List responses wrap the items with paging info:
+
+```json
+{
+  "source": "live: r.jina.ai proxy of imdb.com/chart/top",
+  "updatedAt": "2026-09-04T10:00:00.000Z",
+  "stale": false,
+  "total": 250,
+  "count": 2,
+  "offset": 0,
+  "limit": 250,
+  "filters": { "search": "godfather", "year": null, "min_rating": null, "sort": "rank", "order": "asc" },
+  "data": [ { "rank": 2, "...": "..." }, { "rank": 3, "...": "..." } ]
+}
+```
+
 ## Examples
 
 - [Python](examples/python.py) — standard library only, no install needed:
 
 ```bash
 python examples/python.py
+# against your local server (PowerShell):
+#   $env:BASE_URL="http://localhost:8000"; python examples/python.py
+# against your local server (bash):
+#   BASE_URL=http://localhost:8000 python examples/python.py
 ```
 
 ## Python version
@@ -74,12 +113,27 @@ Prefer self-hosting with Python? `python/` is the same API on FastAPI:
 cd python
 pip install -r requirements.txt
 uvicorn app:app        # local test at http://localhost:8000/toptv
+# Docs (Swagger): http://localhost:8000/docs
+```
+```bash
+# Docker (run from the repo root, not from python/):
+docker build -f python/Dockerfile -t imdb-top250-api . && docker run -p 8000:8000 imdb-top250-api
 ```
 
-Same endpoints and response shape. Config via environment:
+Same endpoints and response shape. Config via environment (see `python/.env.example`):
 
 ```bash
 JINA_API_KEY=... ADMIN_KEY=... uvicorn app:app --host 0.0.0.0 --port 8000
+```
+
+Use it as a library in your own project (no HTTP needed, run from inside `python/`):
+
+```python
+from app import query_chart, get_by_id, get_random
+
+query_chart("top250", search="godfather", min_rating=8.5, limit=5)
+get_by_id("top250", "tt0111161")
+get_random("all")  # movie | tv | all
 ```
 
 Seed data is shared with the Worker (`../src/fallback*.json`);
@@ -93,6 +147,7 @@ npx wrangler dev        # local test at http://localhost:8787/top250
 ```
 
 KV works locally with emulation, no setup needed for a first test.
+(Windows: if `npx` is blocked by the execution policy, run `npx.cmd wrangler dev` instead.)
 
 ## Deploy
 
@@ -139,8 +194,10 @@ MIT — see [LICENSE](LICENSE).
 src/index.js        worker (JS version): routes, live fetch, parsing, cache, stats
 src/fallback.json   seed data, top 250 movies (250 titles, facts only)
 src/fallback-tv.json  seed data, top 250 TV shows (250 titles, facts only)
-python/app.py       same API in Python (FastAPI), self-hostable
-python/requirements.txt  Python dependencies
+python/app.py       same API in Python (FastAPI), self-hostable + importable (query_chart/get_by_id/get_random)
+python/requirements.txt  Python dependencies (pinned)
+python/Dockerfile   container for the Python version
+python/.env.example sample config (JINA_API_KEY, ADMIN_KEY)
 examples/python.py  tiny client example (stdlib only)
 migrations/         D1 schema for the request counters
 wrangler.toml       Worker, KV and D1 config

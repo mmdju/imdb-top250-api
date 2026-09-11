@@ -33,3 +33,10 @@ jobs:
           sleep 12
           curl -sf "http://127.0.0.1:8000/toptv?limit=1" | grep -o '"count":250'
           curl -sf "http://127.0.0.1:8000/top250?limit=1" | grep -o '"count":250'
+          curl -sf "http://127.0.0.1:8000/top250?search=godfather" | grep -o 'The Godfather'
+          curl -sf "http://127.0.0.1:8000/top250?year=1994&limit=5" | grep -o '"year":1994'
+          curl -sf "http://127.0.0.1:8000/top250?min_rating=9&limit=3" | grep -o '"min_rating":9'
+          curl -sf "http://127.0.0.1:8000/toptv?offset=10&limit=5" | grep -o '"offset":10'
+          curl -sf "http://127.0.0.1:8000/movie/tt0111161" | grep -o 'Shawshank'
+          curl -sf "http://127.0.0.1:8000/tv/tt0903747" | grep -o 'Breaking Bad'
+          curl -sf "http://127.0.0.1:8000/random?type=movie" | grep -o '"type":"movie"'
