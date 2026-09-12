@@ -15,7 +15,8 @@
   },
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "test": "node --test tests/sort.test.mjs"
   },
   "devDependencies": {
     "wrangler": "^3.0.0"

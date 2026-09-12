@@ -21,7 +21,7 @@ Base URL: `https://imdb-top250.mmdju.workers.dev`
 - TV shows, first 10: [*/toptv?limit=10*](https://imdb-top250.mmdju.workers.dev/toptv?limit=10)
 
 Just open the links - no key, no setup. (Deploy your own copy only if you want
-your own cache, stats and rate limits - see below.)
+your own cache and stats - see below.)
 
 ## Features
 
@@ -159,7 +159,7 @@ npx wrangler d1 create imdb-top250-db
 # put the binding/id into wrangler.toml, then:
 npx wrangler d1 migrations apply imdb-top250-db --remote
 
-npx wrangler secret put ADMIN_KEY   # optional, protects /refresh
+npx wrangler secret put ADMIN_KEY   # required to enable /refresh (fail-closed without it)
 npx wrangler secret put JINA_API_KEY  # optional but recommended, makes live fetch reliable
 npx wrangler deploy
 ```
@@ -170,8 +170,8 @@ These are not listed on the `/` help page, but they work:
 
 | Method | Path | Description |
 | :--- | :--- | :--- |
-| `GET` | `/refresh?key=ADMIN_KEY` | Force a fresh fetch of both charts (needs the key only if `ADMIN_KEY` is set) |
-| `GET` | `/stats` | Total request counts, backed by D1 |
+| `GET` | `/refresh` | Force a fresh fetch of both charts. Admin-only: send `Authorization: Bearer ADMIN_KEY` (or `?key=` fallback). Returns `503` until `ADMIN_KEY` is configured |
+| `GET` | `/stats` | Total request counts, backed by D1 (public) |
 
 ## Notes
 
@@ -188,14 +188,12 @@ These are not listed on the `/` help page, but they work:
 
 MIT - see [LICENSE](LICENSE).
 
-## Keywords
-
-imdb top 250 api, imdb api, free movies api, tv shows api, top rated movies json, movie ratings api, cloudflare workers api, fastapi movies api.
-
 ## Project structure
 
 ```
 src/index.js        worker (JS version): routes, live fetch, parsing, cache, stats
+src/sort.mjs        pure list-sort comparator (nulls last, both directions)
+tests/sort.test.mjs unit tests for the comparator (`npm test`)
 src/fallback.json   seed data, top 250 movies (250 titles, facts only)
 src/fallback-tv.json  seed data, top 250 TV shows (250 titles, facts only)
 python/app.py       same API in Python (FastAPI), self-hostable + importable (query_chart/get_by_id/get_random)

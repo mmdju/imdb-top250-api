@@ -23,6 +23,7 @@
 
 import FALLBACK_MOVIES from "./fallback.json";
 import FALLBACK_TV from "./fallback-tv.json";
+import { compareItems } from "./sort.mjs";
 
 const CHARTS = {
   top250: {
@@ -46,6 +47,25 @@ const CHARTS = {
 };
 const DAY = 24 * 3600;
 const VALID_SORTS = ["rank", "rating", "year", "votes", "title"];
+
+// Constant-time string compare so key checks don't leak via timing.
+function timingSafeEqual(a, b) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+// Fail closed: /refresh is unavailable until ADMIN_KEY is configured.
+// Key via `Authorization: Bearer <key>` (preferred) or `?key=` fallback.
+function checkAdmin(request, url, env) {
+  if (!env.ADMIN_KEY) return { ok: false, status: 503, error: "Refresh unavailable (ADMIN_KEY not configured)" };
+  const auth = request.headers.get("authorization") || "";
+  const bearer = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : "";
+  const key = bearer || url.searchParams.get("key") || "";
+  if (!timingSafeEqual(key, env.ADMIN_KEY)) return { ok: false, status: 401, error: "Unauthorized" };
+  return { ok: true };
+}
 
 export default {
   async fetch(request, env) {
@@ -141,10 +161,8 @@ export default {
 
     if (url.pathname === "/refresh") {
       await recordHit(env, "/refresh");
-      if (env.ADMIN_KEY) {
-        const key = url.searchParams.get("key") || "";
-        if (key !== env.ADMIN_KEY) return json({ error: "Unauthorized" }, 401);
-      }
+      const admin = checkAdmin(request, url, env);
+      if (!admin.ok) return json({ error: admin.error }, admin.status);
       try {
         const out = {};
         for (const name of Object.keys(CHARTS)) {
@@ -216,20 +234,7 @@ function listResponse(chartResult, params) {
     filtered = filtered.filter((e) => (e.rating ?? -Infinity) >= params.min_rating);
   }
   const count = filtered.length;
-  const sorted = [...filtered].sort((a, b) => {
-    let cmp = 0;
-    if (params.sort === "title") {
-      cmp = String(a.title || "").localeCompare(String(b.title || ""));
-    } else {
-      const av = a[params.sort] ?? null;
-      const bv = b[params.sort] ?? null;
-      if (av == null && bv == null) cmp = 0;
-      else if (av == null) cmp = 1; // nulls last
-      else if (bv == null) cmp = -1;
-      else cmp = av - bv;
-    }
-    return params.order === "desc" ? -cmp : cmp;
-  });
+  const sorted = [...filtered].sort((a, b) => compareItems(a, b, params.sort, params.order));
   const data = sorted.slice(params.offset, params.offset + params.limit);
   return {
     ...chartResult,
@@ -473,7 +478,8 @@ function json(obj, status = 200) {
     headers: {
       "content-type": "application/json; charset=utf-8",
       "access-control-allow-origin": "*",
-      "cache-control": "public, max-age=3600",
+      // Errors must never be cached; success is cacheable for an hour.
+      "cache-control": status >= 400 ? "no-store" : "public, max-age=3600",
     },
   });
 }

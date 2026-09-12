@@ -20,9 +20,10 @@ Use as a library in your own project:
 
 Config via environment (.env supported if python-dotenv is installed):
     JINA_API_KEY=...  # optional but recommended, makes live fetch reliable
-    ADMIN_KEY=...     # optional, protects /refresh
+    ADMIN_KEY=...     # required to enable /refresh (fail-closed without it)
 """
 
+import hmac
 import html
 import json
 import os
@@ -54,6 +55,25 @@ JINA_API_KEY = os.environ.get("JINA_API_KEY", "").strip()
 ADMIN_KEY = os.environ.get("ADMIN_KEY", "")
 
 VALID_SORTS = ("rank", "rating", "year", "votes", "title")
+
+
+def admin_key_from(request: Request, key: str) -> str:
+    """Key via `Authorization: Bearer <key>` (preferred) or `?key=` fallback."""
+    auth = request.headers.get("authorization", "")
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip()
+    return key or ""
+
+
+def check_admin(key: str):
+    """Fail closed: /refresh is unavailable until ADMIN_KEY is configured."""
+    if not ADMIN_KEY:
+        return JSONResponse(
+            {"error": "Refresh unavailable (ADMIN_KEY not configured)"}, status_code=503
+        )
+    if not hmac.compare_digest(key or "", ADMIN_KEY):
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    return None
 
 
 def load_seed(name):
@@ -508,8 +528,9 @@ def random_title(type: str = Query("all", description="movie|tv|all")):
 @app.get("/refresh")
 def refresh(request: Request, key: str = ""):
     record_hit("/refresh")
-    if ADMIN_KEY and key != ADMIN_KEY:
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+    denied = check_admin(admin_key_from(request, key))
+    if denied is not None:
+        return denied
     out = {}
     for name in CHARTS:
         result = get_chart(name, force=True)
