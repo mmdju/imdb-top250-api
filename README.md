@@ -1,5 +1,7 @@
 # IMDb Top 250 API
 
+![IMDb Top 250 API banner](assets/imdb-top250.png)
+
 [![CI](https://github.com/mmdju/imdb-top250-api/actions/workflows/ci.yml/badge.svg)](https://github.com/mmdju/imdb-top250-api/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)](https://workers.cloudflare.com/)
@@ -81,15 +83,15 @@ List responses wrap the items with paging info:
 
 ```json
 {
-  "source": "live: r.jina.ai proxy of imdb.com/chart/top",
-  "updatedAt": "2026-09-04T10:00:00.000Z",
+  "source": "live: r.jina.ai proxy of imdb top",
+  "updatedAt": "2026-09-11T04:06:35.401Z",
   "stale": false,
   "total": 250,
   "count": 2,
   "offset": 0,
   "limit": 250,
-  "filters": { "search": "godfather", "year": null, "min_rating": null, "sort": "rank", "order": "asc" },
-  "data": [ { "rank": 2, "...": "..." }, { "rank": 3, "...": "..." } ]
+  "filters": { "search": "godfather", "year": null, "sort": "rank", "order": "asc" },
+  "data": [ { "rank": 1, "...": "..." }, { "rank": 2, "...": "..." } ]
 }
 ```
 
