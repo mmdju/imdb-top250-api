@@ -206,3 +206,7 @@ examples/python.py  tiny client example (stdlib only)
 migrations/         D1 schema for the request counters
 wrangler.toml       Worker, KV and D1 config
 ```
+
+## See also
+
+API for the other list lives here: **[Letterboxd Top 500](https://github.com/mmdju/letterboxd-top500-api)** - https://letterboxd-top500.mmdju.workers.dev.
