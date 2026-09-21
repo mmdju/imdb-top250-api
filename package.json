@@ -1,10 +1,15 @@
 {
   "name": "imdb-top250-api",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.0.0",
   "license": "MIT",
   "description": "Clean JSON API for the IMDb Top 250 movies and TV shows on Cloudflare Workers.",
-  "keywords": ["imdb", "top250", "cloudflare-workers", "api"],
+  "keywords": [
+    "imdb",
+    "top250",
+    "cloudflare-workers",
+    "api"
+  ],
   "homepage": "https://github.com/mmdju/imdb-top250-api#readme",
   "bugs": {
     "url": "https://github.com/mmdju/imdb-top250-api/issues"
