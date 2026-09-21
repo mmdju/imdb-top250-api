@@ -24,6 +24,6 @@
     "test": "node --test tests/sort.test.mjs"
   },
   "devDependencies": {
-    "wrangler": "^3.0.0"
+    "wrangler": "^4.135.0"
   }
 }
